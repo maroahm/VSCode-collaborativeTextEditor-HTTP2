@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  thesis-backend:
+    container_name: thesis-backend
+    build: 
+      context: ./backend
+    ports:
+      - "4433:4433/udp" # WebTransport strictly uses UDP
+    environment:
+      - NODE_ENV=development
+    restart: unless-stopped
