@@ -225,27 +225,26 @@ class WebSocketClient{
         this.ws = null;
     }
 
-    connectToServer(roomId){
+    connectToServer(roomId, localdoc,awareness, cursorDecorations ){
         if(this.ws){
-            this.ws.close;
+            this.ws.close();
         }
 
-        ws = new WebSocket('wss://localhost:8443/yjs-router');
+        this.ws = new WebSocket('wss://localhost:8443/yjs-router', {rejectUnauthorized: false});
+        vscode.window.showInformationMessage(`Connected to Session: ${roomId}`);
         this.ws.on('open', ()=>{
-            this.ws.send(roomId)
+            this.ws.send(JSON.stringify(roomId))
         })
     
-    // handleOutgoingData(){
-        
-    // }
-    // handleIncomingData(){
         this.ws.on('message', (data)=>{
 
             const message = data.toString();
             const datajson = JSON.parse(message);
 
             if(datajson.type === 'doc'){
-                Y.applyUpdate(localdoc, Uint8Array(datajson), 'network');
+                Y.applyUpdate(localdoc, new Uint8Array(datajson.data), 'network');
+            }else if(datajson.type === 'awareness'){
+                awarenessProtocol.applyAwarenessUpdate(awareness, new Uint8Array(datajson.data), 'network');
             }
         })
 
@@ -255,23 +254,24 @@ class WebSocketClient{
                 this.ws.send(syncMSG);
             }
         })
-        awareness.on('update', ({added, update, removed}, origin)=>{
-        })
-        if(origin === 'local' && this.ws && this.ws.readyState === WebSocket.OPEN){
-            const clients = added.concat(update, removed);
-            const update = awarenessProtocol.encodeAwarenessUpdate(awareness, clients);
-            const msg = JSON.stringify({type: 'awareness', data: Array.from(update)})
-            this.ws.send(msg);
-        }
+        awareness.on('update', ({added, updated, removed}, origin)=>{
+        
+            if(origin === 'local' && this.ws && this.ws.readyState === WebSocket.OPEN){
+                const clients = added.concat(updated, removed);
+                const update = awarenessProtocol.encodeAwarenessUpdate(awareness, clients);
+                const msg = JSON.stringify({type: 'awareness', data: Array.from(update)})
+                this.ws.send(msg);
+            }
+        });
         this.ws.on('close', ()=>{
             vscode.window.showWarningMessage('Disconnected from server.');
-            awareness.setLocalStateField(null);
-            cursorDecorations.forEach(decr =>decr.dispose);
+            awareness.setLocalState(null);
+            cursorDecorations.forEach(decr =>decr.dispose());
             cursorDecorations.clear();
             this.ws = null;
         });
-        this.ws.on('error', ()=>{
-            vscode.window.showErrorMessage(`WebSocket Error: ${error.message}`);
+        this.ws.on('error', (err)=>{
+            vscode.window.showErrorMessage(`WebSocket Error: ${err.message}`);
         })
         
     }
@@ -304,6 +304,7 @@ class CollaborativeSession {
 
         const activeEditor = vscode.window.activeTextEditor;
         if (activeEditor) {
+            console.log('active');
             const fileName = path.basename(activeEditor.document.uri.fsPath);
             const initialText = activeEditor.document.getText();
             const newFileText = new Y.Text();

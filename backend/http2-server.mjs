@@ -1,8 +1,8 @@
-const http2 = require('node:http2');
-const fs = require('node:fs');
-const {webSocketServer} = require('ws');
-const Y = require('yjs');
-
+import http2 from 'node:http2'; 
+import fs from 'node:fs';
+import { WebSocketServer } from 'ws'; 
+import * as Y from 'yjs';             
+import path from 'node:path'
 
 const activeRooms = new Map();
 
@@ -10,15 +10,15 @@ async function startHTTP2Server(){
     console.log('booting http2 server ....');
     try{
     const options = {
-        key: fs.readFileSync('server-key.pem'),
-        cert: fs.readFileSync('server-cert.pem'),
+        key: fs.readFileSync(path.join(import.meta.dirname, 'localhost-privkey.pem')),
+        cert: fs.readFileSync(path.join(import.meta.dirname, 'localhost-cert.pem')),
         allowHTTP1: true
     };
     const server = http2.createSecureServer(options);
     
         
 
-    const wss = new webSocketServer({noServer: true});
+    const wss = new WebSocketServer({noServer: true});
 
     server.on('upgrade', function upgrade(request, socket, head){
         if(request.url === '/yjs-router'){
@@ -42,7 +42,6 @@ async function startHTTP2Server(){
 }
     function handleClientconnection(ws){
         let currentRoom = null;
-        let clientInfo = null
         ws.on('message', (data)=>{
             const roomid = data.toString().trim();
             const dataStr = data.toString();
@@ -52,9 +51,8 @@ async function startHTTP2Server(){
                 const roomId = roomid;
                 console.log(`user joined room: [${roomId}]`)
                 if(!activeRooms.has(roomId)){
-                    activeRooms.set(roomId, {clients: new set()});
+                    activeRooms.set(roomId, {doc: new Y.Doc(), clients: new Set()});
                 }
-                clientInfo = {ws};
                 currentRoom = activeRooms.get(roomId);
                 currentRoom.clients.add(ws);
                 const stateVector = Y.encodeStateAsUpdate(currentRoom.doc);
@@ -64,7 +62,7 @@ async function startHTTP2Server(){
             }
             //update the servers local doc
             if(datajson.type === 'doc'){
-                Y.applyUpdate(currentRoom.doc, new Uint8Array(datajson));
+                Y.applyUpdate(currentRoom.doc, new Uint8Array(datajson.data));
             }
             //share the reliable doc updates and the datagrams from the sending user to the rest of the users in the room
             for(const clientWS of currentRoom.clients){
@@ -75,14 +73,14 @@ async function startHTTP2Server(){
             console.log('recieved sync data in room:', roomid);
         });
         ws.on('close', ()=>{
-            if(currentRoom && clientInfo){
-                currentRoom.clients.delete(clientInfo);
+            if(currentRoom){
+                currentRoom.clients.delete(ws);
                 console.log('peer Disconnected');
             }
         });
         ws.on('error', ()=>{
-            if(currentRoom && clientInfo){
-                currentRoom.client.delete(clientInfo);
+            if(currentRoom){
+                currentRoom.clients.delete(ws);
             }
         });
 
